@@ -1,6 +1,8 @@
 #include "leptjson.h"
 #include <assert.h>  /* assert() */
 #include <stdlib.h>  /* NULL, strtod() */
+#include <errno.h>   /* errno, ERANGE */
+#include <math.h>    /* HUGE_VAL */
 
 #define EXPECT(c, ch)       do { assert(*c->json == (ch)); c->json++; } while(0)
 
@@ -42,16 +44,80 @@ static int lept_parse_null(lept_context* c, lept_value* v) {
     return LEPT_PARSE_OK;
 }
 
+static int lept_parse_literal(lept_context* c, lept_value* v, lept_type *type, const char* literal) {
+    
+}
+
+#define ISDIGIT(ch)         ((ch) >= '0' && (ch) <= '9')
+#define ISDIGIT1TO9(ch)     ((ch) >= '1' && (ch) <= '9')
+
+static int lept_number_validate_check(const char *c) {
+    if(*c == '-') {
+        c ++;
+    }
+    
+    if(*c == '0') {
+        c ++;
+    } else if(ISDIGIT1TO9(*c)) {
+        while(ISDIGIT(*c)) {
+            c ++;
+        }
+    } else {
+        return LEPT_PARSE_INVALID_VALUE;
+    }
+    
+    if(*c == '.'){
+        c ++;
+        if(ISDIGIT(*c)) {
+            while(ISDIGIT(*c)) {
+                c ++;
+            }
+        } else {
+            return LEPT_PARSE_INVALID_VALUE;
+        }
+    }
+    
+    if(*c == 'e' || *c == 'E') {
+        c ++;
+        
+        if(*c == '+' || *c =='-') {
+            c ++;
+        }
+        
+        if(ISDIGIT(*c)) {
+            while(ISDIGIT(*c)) {
+                c ++;
+            }
+            
+        }
+    }
+    
+    if(*c == '\0') {
+        return LEPT_PARSE_OK;
+    }
+    
+    return LEPT_PARSE_ROOT_NOT_SINGULAR;
+}
+
 static int lept_parse_number(lept_context* c, lept_value* v) {
     char* end;
+    int ret;
     /* \TODO validate number */
+    if((ret = lept_number_validate_check(c->json)) != LEPT_PARSE_OK) {
+        return ret;
+    }
+    
     v->n = strtod(c->json, &end);
     if (c->json == end)
         return LEPT_PARSE_INVALID_VALUE;
+    if ((errno == ERANGE) && (v->n == HUGE_VAL || v->n == -HUGE_VAL))
+        return LEPT_PARSE_NUMBER_TOO_BIG;
     c->json = end;
     v->type = LEPT_NUMBER;
     return LEPT_PARSE_OK;
 }
+
+
 
 static int lept_parse_value(lept_context* c, lept_value* v) {
     switch (*c->json) {
